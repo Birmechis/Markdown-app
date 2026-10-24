@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 class Note(db.Model):
     id = db.Column(db.Integer, primary_key=True, nullable=False)
-    title = db.Column(db.String(100), nullable=False)
+    title = db.Column(db.String(100), nullable=False, unique=True)
     markdown_content = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
