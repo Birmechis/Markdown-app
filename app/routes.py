@@ -1,5 +1,6 @@
-from flask import request, jsonify, Blueprint
+from flask import request, jsonify, Blueprint, Response
 import language_tool_python
+import markdown
 from app.models import Note
 from app import db
 
@@ -144,7 +145,7 @@ def delete_note(id):
     return "", 204
 
 @bp.route('/notes/<int:id>/checks', methods=['POST'])
-def grammar_check(id):
+def grammar_check():
 
     if not request.is_json:
         return jsonify({
@@ -193,3 +194,17 @@ def grammar_check(id):
         "errors": len(results),
         "matches": results
     }), 200
+
+@bp.route('/notes/<int:id>/render', methods=['GET'])
+def render_note(id):
+
+    data = Note.filter_by(id=id).first()
+
+    if not data:
+        return jsonify({
+            "error": "Note not found"
+        }), 404
+
+    html_output = markdown.markdown(data.markdown_content)
+
+    return Response(html_output, mimetype='text/html')
