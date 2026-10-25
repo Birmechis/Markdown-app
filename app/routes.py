@@ -1,15 +1,35 @@
 from flask import request, jsonify, Blueprint
+import language_tool_python
 from app.models import Note
 from app import db
 
 bp = Blueprint('api', __name__)
+tool = language_tool_python.LanguageTool('en-US')
+
 
 @bp.route('/notes', methods=['POST'])
 def create_note():
+
+    if not request.is_json:
+        return jsonify({
+            "error": "Request must be json object"
+        }), 425
+
     data = request.get_json()
 
     title = data.get('title')
     markdown_content = data.get('markdown_content')
+
+    if not title or not isinstance(title, str) or not title.strip():
+        return jsonify({
+            "error": "The title field is required and must be a non-empty string"
+        }), 400
+
+    if not markdown_content or not isinstance(markdown_content, str) or not markdown_content.strip():
+        return jsonify({
+            "error": "The markdown_content field is required and must be a non-empty string"
+        }), 400
+
     notes = Note(
         title=title,
         markdown_content=markdown_content
@@ -63,15 +83,30 @@ def get_note(id):
 @bp.route('/notes/<int:id>', methods=['PUT'])
 def update_note(id):
 
+    if not request.is_json:
+        return jsonify({
+            "error": "Request must be json object"
+        }), 415
+
     data = request.get_json()
 
-    if not data or "title" not in data or "markdown_content" not in data:
+    if not data:
         return jsonify({
-            "error": "Missing fields"
+            "error": "Missing or invalid JSON request body"
         }), 400
 
     title = data.get('title')
     markdown_content = data.get('markdown_content')
+
+    if not title or not isinstance(title, str) or not title.strip():
+        return jsonify({
+            "error": "The title field is required and must be a non-empty string"
+        }), 400
+
+    if not markdown_content or not isinstance(markdown_content, str) or not markdown_content.strip():
+        return jsonify({
+            "error": "The markdown_content field is required and must be a non-empty string"
+        }), 400
 
     note = Note.query.filter_by(id=id).first()
 
@@ -107,3 +142,54 @@ def delete_note(id):
     db.session.commit()
 
     return "", 204
+
+@bp.route('/notes/<int:id>/checks', methods=['POST'])
+def grammar_check(id):
+
+    if not request.is_json:
+        return jsonify({
+            "error": "Request must be json object"
+        }), 415
+
+    data = request.get_json()
+
+    if not data:
+        return jsonify({
+            "error": "Missing or invalid JSON request body"
+        }), 400
+
+    title = data.get('title')
+    markdown_content = data.get('markdown_content')
+
+    if not title or not isinstance(title, str) or not title.strip():
+        return jsonify({
+            "error": "The title field is required and must be a non-empty string"
+        }), 400
+
+    if not markdown_content or not isinstance(markdown_content, str) or not markdown_content.strip():
+        return jsonify({
+            "error": "The markdown_content field is required and must be a non-empty string"
+        }), 400
+
+    clean_title = title.strip()
+    clean_markdown_content = markdown_content.strip()
+
+    full_text = f"{clean_title}\n{clean_markdown_content}"
+
+    matches = tool.check(full_text)
+
+    results = []
+    for match in matches:
+        results.append({
+            "message": match.message,
+            "sentence": match.sentence,
+            "offset": match.offset,
+            "error_length": match.error_length,
+            "replacement": match.replacements,
+        })
+
+    return jsonify({
+        "original_text": full_text,
+        "errors": len(results),
+        "matches": results
+    }), 200
