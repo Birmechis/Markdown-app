@@ -1,11 +1,15 @@
-from flask import request, jsonify, Blueprint, Response
+import uuid
 import language_tool_python
 import markdown
-from app.models import Note
+from pathlib import Path
+from flask import request, jsonify, Blueprint, Response, render_template, current_app
+from werkzeug.utils import secure_filename
+from app.models import Note, AttachmentForm, Attachment
 from app import db
 
-bp = Blueprint('api', __name__)
+bp = Blueprint('api', __name__, template_folder='templates')
 tool = language_tool_python.LanguageTool('en-US')
+
 
 
 @bp.route('/notes', methods=['POST'])
@@ -208,3 +212,64 @@ def render_note(id):
     html_output = markdown.markdown(data.markdown_content)
 
     return Response(html_output, mimetype='text/html')
+
+@bp.route('/notes/<int:id>/attachments', methods=['POST'])
+def attach_note(id):
+
+    note = Note.query.get_or_404(id)
+
+    form = AttachmentForm()
+
+    if form.validate_on_submit():
+        file = form.file.data
+
+        original_name = secure_filename(file.filename)
+        unique_filename = f"{uuid.uuid4()}{Path(original_name).suffix}"
+
+        target_path = current_app.config['UPLOAD_FOLDER']/unique_filename
+        file.save(str(target_path))
+
+        new_attachment = Attachment(
+            original_name=original_name,
+            unique_name=unique_filename,
+            note_id=note.id,
+        )
+
+        db.session.add(new_attachment)
+        db.session.commit()
+
+        return jsonify({
+            "msg": "Note successfully uploaded",
+            "attachment": {
+                "id": new_attachment.id,
+                "original_name": new_attachment.original_name,
+                "unique_name": new_attachment.unique_name,
+                "note_id": new_attachment.note_id
+            }
+        }), 200
+
+    return render_template('index.html', form=form, note=note)
+
+@bp.route('/notes/<int:id>/attachments', methods=['GET'])
+def get_attachment(id):
+
+    note = Note.query.get_or_404(id)
+
+    attachments = note.attachments
+
+    if not attachments:
+        return jsonify({"attachments": []}), 200
+
+    results = []
+    for item in attachments:
+        results.append({
+            "id": item.id,
+            "original_name": item.original_name,
+            "unique_name": item.unique_name,
+            "uploaded_at": item.uploaded_at.isoformat() if item.uploaded_at else None,
+            "note_id": item.note_id
+        })
+
+    return jsonify({
+        "attachments": results
+    }), 200
